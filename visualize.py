@@ -25,7 +25,8 @@ def generate_html():
         ORDER BY c.paper_id, c.claim_id
     """).fetchall()
 
-    # Methodological note: empirical claims = quant ground truth, only challengeable by quant
+    # Methodological note: empirical claims = almost always quant ground truth
+    # When qual contradicts quant, pause to ask what quant might be missing
     # theoretical claims = mechanisms, can be challenged by qual evidence
 
     # Get all links grouped by claim
@@ -278,9 +279,9 @@ def generate_html():
     </div>
 
     <div style="background: #e3f2fd; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #1565c0;">
-        <strong>Methodological note:</strong> Empirical claims (quant ground truth) can only be challenged by other quantitative evidence.
-        Theoretical claims (mechanisms) can be challenged or supported by qualitative evidence.
-        Qual evidence that contradicts quant findings illustrates <em>mistaken beliefs</em>, not factual challenges.
+        <strong>Methodological note:</strong> Empirical claims (quant) are almost always ground truth—but when qual contradicts quant, pause and ask what the quant might be missing.
+        Usually, qual perceptions are mistaken beliefs (a finding in itself). Occasionally, qual reveals gaps in the quantitative record.
+        Theoretical claims (mechanisms) can be challenged by qual, but quant behavioral patterns can rule out mechanisms.
     </div>
 """
 

@@ -10,7 +10,7 @@ This is a feature, not a bug.
 
 | P-Hacking | Pre-Review |
 |-----------|------------|
-| Change data to fit story | Data is ground truth, unchanged |
+| Change data to fit story | Quant data is fixed; you investigate, not alter |
 | Hide disconfirming evidence | Surface and engage with challenges |
 | Post-hoc rationalization | Principled adjudication with clear rules |
 | Undocumented | Full audit trail in claim revisions |
@@ -21,9 +21,10 @@ The key distinction: **quant findings are fixed**. Pre-review refines mechanism 
 
 When adjudicating contested claims:
 
-1. **Empirical claims (quant)** = ground truth
-   - Only challengeable by other quant evidence
-   - Qual perceptions that contradict quant → mistaken beliefs, not challenges
+1. **Empirical claims (quant)** = almost always ground truth
+   - Usually only challengeable by other quant evidence
+   - Qual perceptions that contradict quant → usually mistaken beliefs, not challenges
+   - BUT: pause and ask "what might we be missing?" (see below)
 
 2. **Mechanism claims (theoretical)** = interpretations
    - Can be challenged by qual evidence
@@ -31,8 +32,18 @@ When adjudicating contested claims:
    - If mechanism X predicts behavior A, but quant shows behavior B, mechanism X is disconfirmed
 
 3. **Qual evidence about quant claims**
-   - Reclassify as "illustrates mistaken beliefs" not "challenges"
+   - Usually reclassify as "illustrates mistaken beliefs" not "challenges"
    - Often supports claims about lay theories being wrong
+   - Occasionally: qual reveals missing variables or data problems in quant records
+
+### The Pause
+
+When quant and qual contradict, before reclassifying qual as "mistaken beliefs," ask:
+
+- **Missing variables?** Could informants be noticing something your quant data doesn't capture? A department, time period, or category that's masked in aggregate?
+- **Record problems?** In rare cases, qual can reveal that records are falsified, censored, or miscoded (exits as transfers, etc.)
+
+Most of the time, the answer is no—the quant is right and the qual perception is wrong. But the pause matters. When informants are wrong, that's a finding. When they're pointing at data gaps, that's a different kind of finding.
 
 ## Pre-Review Workflow
 
@@ -52,9 +63,11 @@ Look for:
 For each contested claim, ask:
 
 **If QUANT claim challenged by qual:**
-- Is the qual evidence about perceptions/beliefs or actual data?
-- If perceptions → reclassify as supports lay-theory-is-wrong claims
-- If actual competing data → genuine challenge, investigate
+- First pause: What might the quant be missing?
+- Could the informant be seeing a real pattern in a subset your data doesn't capture?
+- Could records be miscoded, censored, or falsified?
+- If no → the qual is about mistaken perceptions → reclassify as supports lay-theory-is-wrong claims
+- If yes → genuine data gap → investigate before dismissing
 
 **If MECHANISM claim challenged:**
 - What does this mechanism predict behaviorally?

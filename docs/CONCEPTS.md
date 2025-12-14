@@ -87,24 +87,47 @@ This layered approach means you can be transparent about your evidence *structur
 
 When quantitative and qualitative evidence seem to conflict, who wins?
 
-**Living Paper's rule: Quantitative findings are ground truth.**
+**Living Paper's default: Quantitative findings are almost always ground truth.**
 
 This isn't bias against qualitative work—it's recognition that quant and qual answer different questions:
 
 - **Quantitative data** tells you *what happened* — behaviors, frequencies, outcomes
 - **Qualitative data** helps explain *why* it happened — mechanisms, meanings, processes
 
-When a manager says "there was a mass exodus" but your retention data shows 94% stayed, the manager isn't *challenging* the retention finding. The manager is demonstrating that their mental model is wrong.
+When a manager says "there was a mass exodus" but your retention data shows 94% stayed, the manager usually isn't *challenging* the retention finding. The manager is demonstrating that their mental model is wrong.
 
 This is valuable evidence! It supports claims like "lay theories about automation effects don't match reality." But it doesn't refute the numbers.
 
+### The Pause: What Might We Be Missing?
+
+That said, when quant and qual contradict, the intellectually honest move is to pause and ask: *what might we be missing?*
+
+Qualitative evidence can sometimes reveal:
+
+1. **Missing variables** — Informants notice something that would explain hidden variation in the quant data. Maybe there *was* an exodus, but in a department or time period your data doesn't cover. Maybe the 94% who stayed includes people who were already planning to leave but delayed.
+
+2. **Falsified or censored records** — In rare cases, qual can reveal that the numbers themselves are wrong. Workers might report that exits were recorded as "transfers" or that headcounts were manipulated.
+
+These are genuinely rare. Most of the time, when qual contradicts quant, the qual perception is wrong. But the pause matters.
+
 ### Adjudication Rules
 
-1. **Empirical quant claims** can only be challenged by other quant evidence
-2. **Qualitative perceptions contradicting quant** should be reclassified as "illustrates mistaken beliefs" rather than "challenges"
-3. **Mechanism claims** can be challenged by qualitative evidence, BUT quantitative behavioral patterns can rule out proposed mechanisms
+1. **Empirical quant claims** are almost always ground truth
+   - Can be challenged by other quant evidence
+   - Can *occasionally* be challenged if qual reveals missing data or record problems
+   - When qual contradicts quant, first ask: what might the quant be missing?
+
+2. **Qualitative perceptions contradicting quant** should usually be reclassified
+   - "Illustrates mistaken beliefs" rather than "challenges"
+   - This is itself a finding: informants have wrong mental models
+
+3. **Mechanism claims** can be challenged by qualitative evidence
+   - BUT: quantitative behavioral patterns can rule out mechanisms
+   - If mechanism X predicts behavior A, but quant shows behavior B, mechanism X is disconfirmed
 
 **Example:** An informant claims workers stayed because they "just didn't care" (apathy). But if retention *increases* as automation approaches and *diverges* by automation type after implementation, apathy can't explain the pattern. Apathy predicts uniform, not divergent, responses. The mechanism claim is eliminated by the quant pattern, not by finding a contradictory quote.
+
+**Counter-example:** A manager says "lots of people left engineering" but your company-wide retention data shows stability. Before dismissing this as a mistaken perception, ask: Does your data include engineering specifically? Could departures be coded as transfers? Is the manager seeing a real pattern in their local context that's masked in aggregate data? Usually the answer is no—but sometimes qual points you toward data you didn't know you were missing.
 
 ---
 
