@@ -88,9 +88,19 @@ cd living-paper
 python3 lp.py init
 python3 lp.py ingest --claims your_claims.jsonl --evidence your_evidence.jsonl --links your_links.csv
 python3 lp.py lint
-python3 lp.py prereview
+python3 lp.py prereview --out ./prereview_report.md
 python3 lp.py export --out ./verification_package
+
+# NEW in v0.5: Generate reviewer packages
+python3 lp.py export-package --paper your-paper-id --out ./reviewer_folder
 ```
+
+### What's New in v0.5
+
+- **Static HTML Reviewer**: Generate self-contained HTML files reviewers can open in any browser—no server needed
+- **Reviewer Packages**: Create complete folders with HTML, README, and double-click launchers (Mac/Windows)
+- **Prevalence Metadata**: Track informant coverage, contradicting evidence counts, and saturation notes
+- **Contradiction Badges**: Visual highlighting of contradicting evidence in the reviewer interface
 
 ---
 

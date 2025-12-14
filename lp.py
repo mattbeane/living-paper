@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-living_paper v0.1 - local-first claim↔evidence traceability
+living_paper v0.5 - local-first claim↔evidence traceability
 
 Public store:  lp_public.sqlite  (safe metadata, shareable)
 Private store: lp_private.sqlite (protected pointers; gitignore)
@@ -10,8 +10,12 @@ Commands:
   ingest --claims <claims.jsonl> --evidence <evidence.jsonl> --links <links.csv>
   lint
   export --out <dir>
+  verify-export --out <dir>
+  prereview --out <file>
+  export-html --paper <paper_id> --out <file>
+  export-package --paper <paper_id> --out <folder>
 
-No external dependencies.
+No external dependencies for core. Optional: pyyaml for entity redaction.
 """
 from __future__ import annotations
 
@@ -118,8 +122,9 @@ def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
                 """
                 INSERT INTO claim(claim_id,paper_id,claim_type,text,confidence,status,
                                   verification_status,verification_mode,parent_claim_id,frame_id,
+                                  informant_coverage,contradicting_count,saturation_note,prevalence_basis,
                                   created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(claim_id) DO UPDATE SET
                   paper_id=excluded.paper_id,
                   claim_type=excluded.claim_type,
@@ -130,6 +135,10 @@ def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
                   verification_mode=COALESCE(excluded.verification_mode, claim.verification_mode),
                   parent_claim_id=COALESCE(excluded.parent_claim_id, claim.parent_claim_id),
                   frame_id=COALESCE(excluded.frame_id, claim.frame_id),
+                  informant_coverage=COALESCE(excluded.informant_coverage, claim.informant_coverage),
+                  contradicting_count=COALESCE(excluded.contradicting_count, claim.contradicting_count),
+                  saturation_note=COALESCE(excluded.saturation_note, claim.saturation_note),
+                  prevalence_basis=COALESCE(excluded.prevalence_basis, claim.prevalence_basis),
                   updated_at=excluded.updated_at
                 """,
                 (
@@ -143,6 +152,10 @@ def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
                     obj.get("verification_mode","public_provenance"),
                     obj.get("parent_claim_id"),
                     obj.get("frame_id"),
+                    obj.get("informant_coverage"),
+                    obj.get("contradicting_count", 0),
+                    obj.get("saturation_note"),
+                    obj.get("prevalence_basis"),
                     now(),
                     now(),
                 ),
@@ -563,8 +576,414 @@ def prereview_cmd(args: argparse.Namespace) -> None:
     print(f"[living_paper] pre-review report: {contested_count} contested claims written to {out_path}")
 
 
+def export_html_cmd(args: argparse.Namespace) -> None:
+    """Export a self-contained HTML reviewer interface (no server needed)."""
+    pub_path, _ = db_paths()
+    if not pub_path.exists():
+        die(f"database not found: {pub_path} — run 'lp.py init' first")
+
+    db = connect(pub_path)
+
+    # Gather all data
+    paper_id = args.paper
+    paper = db.execute("SELECT * FROM paper WHERE paper_id = ?", (paper_id,)).fetchone()
+    if not paper:
+        die(f"paper not found: {paper_id}")
+
+    claims = db.execute("""
+        SELECT claim_id, paper_id, claim_type, text, confidence, status,
+               verification_status, verified_by, verified_at,
+               informant_coverage, contradicting_count, saturation_note, prevalence_basis
+        FROM claim WHERE paper_id = ? ORDER BY claim_id
+    """, (paper_id,)).fetchall()
+
+    # Build claims data with evidence
+    claims_data = []
+    for c in claims:
+        links = db.execute("""
+            SELECT l.evidence_id, l.relation, l.weight, l.note, l.analytic_note,
+                   l.verification_status, l.verified_by, l.verified_at,
+                   e.summary, e.sensitivity_tier, e.evidence_type, e.meta_json
+            FROM claim_evidence_link l
+            JOIN evidence e ON e.evidence_id = l.evidence_id
+            WHERE l.claim_id = ?
+            ORDER BY CASE l.weight WHEN 'central' THEN 1 WHEN 'supporting' THEN 2 ELSE 3 END, l.relation
+        """, (c['claim_id'],)).fetchall()
+
+        evidence_list = []
+        for l in links:
+            # Extract direction from meta_json for contradiction flagging
+            meta = json.loads(l['meta_json'] or '{}')
+            direction = meta.get('direction', '').upper()
+            is_contradicting = direction == 'CHALLENGES'
+
+            evidence_list.append({
+                'evidence_id': l['evidence_id'],
+                'relation': l['relation'],
+                'weight': l['weight'],
+                'note': l['note'] or '',
+                'analytic_note': l['analytic_note'] or '',
+                'verification_status': l['verification_status'],
+                'verified_by': l['verified_by'],
+                'verified_at': l['verified_at'],
+                'summary': l['summary'] if l['sensitivity_tier'] == 'PUBLIC' else '[CONTROLLED]',
+                'sensitivity_tier': l['sensitivity_tier'],
+                'evidence_type': l['evidence_type'],
+                'direction': direction,
+                'is_contradicting': is_contradicting
+            })
+
+        # Compute support status
+        supports = sum(1 for l in links if l['relation'] == 'supports')
+        challenges = sum(1 for l in links if l['relation'] == 'challenges')
+        if challenges > supports:
+            support_status = 'contested'
+        elif challenges > 0:
+            support_status = 'partial'
+        elif supports > 0:
+            support_status = 'supported'
+        else:
+            support_status = 'undocumented'
+
+        claims_data.append({
+            'claim_id': c['claim_id'],
+            'claim_type': c['claim_type'],
+            'text': c['text'],
+            'confidence': c['confidence'],
+            'verification_status': c['verification_status'],
+            'informant_coverage': c['informant_coverage'],
+            'contradicting_count': c['contradicting_count'],
+            'saturation_note': c['saturation_note'],
+            'prevalence_basis': c['prevalence_basis'],
+            'support_status': support_status,
+            'evidence': evidence_list
+        })
+
+    # Generate HTML
+    data_json = json.dumps({'paper_id': paper_id, 'title': paper['title'], 'claims': claims_data, 'generated_at': now()})
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review: {paper_id}</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }}
+        .container {{ max-width: 1000px; margin: 0 auto; padding: 20px; }}
+        header {{ background: #1a1a2e; color: white; padding: 20px; margin-bottom: 20px; }}
+        header h1 {{ font-size: 1.3rem; font-weight: 500; }}
+        header p {{ opacity: 0.8; font-size: 0.85rem; margin-top: 5px; }}
+        .reviewer-bar {{ background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }}
+        .reviewer-bar input {{ padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; }}
+        .reviewer-bar button {{ padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }}
+        .btn-primary {{ background: #1a1a2e; color: white; }}
+        .btn-success {{ background: #4caf50; color: white; }}
+        .claim-card {{ background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 15px; overflow: hidden; }}
+        .claim-header {{ padding: 12px 16px; border-bottom: 1px solid #eee; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }}
+        .claim-id {{ font-family: monospace; font-size: 0.75rem; color: #666; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }}
+        .claim-type {{ font-size: 0.65rem; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: #e0e0e0; }}
+        .claim-type.empirical {{ background: #e3f2fd; color: #1565c0; }}
+        .claim-type.theoretical {{ background: #f3e5f5; color: #7b1fa2; }}
+        .status-badge {{ font-size: 0.65rem; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }}
+        .status-supported {{ background: #c8e6c9; color: #2e7d32; }}
+        .status-partial {{ background: #fff3e0; color: #ef6c00; }}
+        .status-contested {{ background: #ffcdd2; color: #c62828; }}
+        .status-undocumented {{ background: #e0e0e0; color: #616161; }}
+        .claim-body {{ padding: 12px 16px; }}
+        .claim-text {{ font-size: 0.95rem; margin-bottom: 10px; }}
+        .prevalence {{ padding: 8px 10px; background: #f8f9fa; border-radius: 4px; font-size: 0.75rem; color: #555; margin-bottom: 10px; }}
+        .evidence-list {{ padding: 0 16px 16px; }}
+        .evidence-item {{ padding: 10px; margin-bottom: 8px; background: #fafafa; border-radius: 6px; border-left: 3px solid #ccc; }}
+        .evidence-item.supports {{ border-left-color: #4caf50; }}
+        .evidence-item.challenges {{ border-left-color: #f44336; }}
+        .evidence-item.qualifies {{ border-left-color: #ff9800; }}
+        .evidence-item.contradicting {{ background: #fff3f3; border-left-color: #f44336; border-left-width: 4px; }}
+        .contradiction-badge {{ background: #f44336; color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; font-weight: bold; margin-left: 8px; }}
+        .evidence-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }}
+        .evidence-id {{ font-family: monospace; font-size: 0.7rem; color: #666; }}
+        .evidence-relation {{ font-size: 0.6rem; text-transform: uppercase; padding: 2px 5px; border-radius: 3px; background: #e0e0e0; }}
+        .evidence-summary {{ font-size: 0.85rem; color: #444; }}
+        .note-input {{ width: 100%; margin-top: 8px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.8rem; resize: vertical; min-height: 50px; }}
+        .verify-controls {{ display: flex; gap: 6px; margin-top: 8px; }}
+        .verify-btn {{ padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }}
+        .verify-btn.verified {{ background: #4caf50; color: white; }}
+        .verify-btn.author {{ background: #ff9800; color: white; }}
+        .verify-btn.unverified {{ background: #9e9e9e; color: white; }}
+        .verify-btn.active {{ box-shadow: 0 0 0 2px #333; }}
+        .stats {{ display: flex; gap: 15px; font-size: 0.85rem; color: #666; margin-bottom: 15px; }}
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Verification Review: {paper_id}</h1>
+            <p>Offline reviewer interface - your progress is saved locally</p>
+        </div>
+    </header>
+    <div class="container">
+        <div class="reviewer-bar">
+            <label>Your name: <input type="text" id="reviewer-name" placeholder="Reviewer name"></label>
+            <button class="btn-success" onclick="generateReport()">Generate Report</button>
+            <button class="btn-primary" onclick="exportData()">Export Data</button>
+            <span id="save-status" style="font-size: 0.8rem; color: #666;"></span>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div id="claims"></div>
+    </div>
+    <script>
+    const DATA = {data_json};
+    const STORAGE_KEY = 'lp_review_' + DATA.paper_id;
+
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{"verifications":{{}},"notes":{{}}}}');
+    let reviewerName = localStorage.getItem('reviewerName') || '';
+    document.getElementById('reviewer-name').value = reviewerName;
+    document.getElementById('reviewer-name').addEventListener('change', e => {{
+        reviewerName = e.target.value;
+        localStorage.setItem('reviewerName', reviewerName);
+    }});
+
+    function saveState() {{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        document.getElementById('save-status').textContent = 'Saved ' + new Date().toLocaleTimeString();
+    }}
+
+    function setVerification(claimId, evidenceId, status) {{
+        const key = claimId + ':' + evidenceId;
+        state.verifications[key] = {{ status, reviewer: reviewerName, at: new Date().toISOString() }};
+        saveState();
+        render();
+    }}
+
+    function updateNote(claimId, evidenceId, note) {{
+        const key = claimId + ':' + evidenceId;
+        state.notes[key] = note;
+        saveState();
+    }}
+
+    function render() {{
+        let verified = 0, author = 0, unverified = 0;
+        let html = '';
+        DATA.claims.forEach(c => {{
+            html += `<div class="claim-card">
+                <div class="claim-header">
+                    <span class="claim-id">${{c.claim_id}}</span>
+                    <span class="claim-type ${{c.claim_type}}">${{c.claim_type}}</span>
+                    <span class="status-badge status-${{c.support_status}}">${{c.support_status}}</span>
+                </div>
+                <div class="claim-body">
+                    <p class="claim-text">${{c.text}}</p>
+                    ${{(c.informant_coverage || c.saturation_note || c.prevalence_basis) ? `
+                    <div class="prevalence">
+                        <strong>Prevalence:</strong>
+                        ${{c.informant_coverage ? ' ' + c.informant_coverage : ''}}
+                        ${{c.prevalence_basis ? ' [' + c.prevalence_basis + ']' : ''}}
+                        ${{c.contradicting_count === 0 ? ' - No contradicting' : c.contradicting_count > 0 ? ' - ' + c.contradicting_count + ' contradicting' : ''}}
+                        ${{c.saturation_note ? '<br><em>' + c.saturation_note + '</em>' : ''}}
+                    </div>` : ''}}
+                </div>
+                <div class="evidence-list">
+                    <strong style="font-size: 0.8rem; color: #666;">Evidence (${{c.evidence.length}})</strong>
+                    ${{c.evidence.map(e => {{
+                        const key = c.claim_id + ':' + e.evidence_id;
+                        const v = state.verifications[key] || {{}};
+                        const note = state.notes[key] || e.analytic_note || '';
+                        if (v.status === 'external_verified') verified++;
+                        else if (v.status === 'author_verified') author++;
+                        else unverified++;
+                        return `<div class="evidence-item ${{e.relation}} ${{e.is_contradicting ? 'contradicting' : ''}}">
+                            <div class="evidence-header">
+                                <span class="evidence-id">${{e.evidence_id}}${{e.is_contradicting ? '<span class="contradiction-badge">CONTRADICTING</span>' : ''}}</span>
+                                <span><span class="evidence-relation">${{e.relation}}</span> <span class="evidence-relation">${{e.weight}}</span></span>
+                            </div>
+                            <p class="evidence-summary">${{e.summary}}</p>
+                            ${{e.note ? '<p style="font-size:0.75rem;color:#666;margin-top:4px;">Note: ' + e.note + '</p>' : ''}}
+                            <textarea class="note-input" placeholder="Your analytic note..." onchange="updateNote('${{c.claim_id}}','${{e.evidence_id}}',this.value)">${{note}}</textarea>
+                            <div class="verify-controls">
+                                <button class="verify-btn verified ${{v.status==='external_verified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','external_verified')">Verified</button>
+                                <button class="verify-btn author ${{v.status==='author_verified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','author_verified')">Author Only</button>
+                                <button class="verify-btn unverified ${{v.status==='unverified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','unverified')">Not Verified</button>
+                            </div>
+                        </div>`;
+                    }}).join('')}}
+                </div>
+            </div>`;
+        }});
+        document.getElementById('claims').innerHTML = html;
+        document.getElementById('stats').innerHTML = `
+            <span>Verified: ${{verified}}</span>
+            <span>Author Only: ${{author}}</span>
+            <span>Not Verified: ${{unverified}}</span>
+            <span>Total Links: ${{verified + author + unverified}}</span>
+        `;
+    }}
+
+    function generateReport() {{
+        let report = '# Verification Report: ' + DATA.paper_id + '\\n\\n';
+        report += 'Generated: ' + new Date().toISOString() + '\\n';
+        report += 'Reviewer: ' + (reviewerName || 'anonymous') + '\\n\\n';
+
+        let verified = 0, author = 0, unverified = 0;
+        DATA.claims.forEach(c => {{
+            c.evidence.forEach(e => {{
+                const key = c.claim_id + ':' + e.evidence_id;
+                const v = state.verifications[key] || {{}};
+                if (v.status === 'external_verified') verified++;
+                else if (v.status === 'author_verified') author++;
+                else unverified++;
+            }});
+        }});
+
+        report += '## Summary\\n\\n';
+        report += '- Verified: ' + verified + '\\n';
+        report += '- Author Only: ' + author + '\\n';
+        report += '- Not Verified: ' + unverified + '\\n\\n';
+
+        report += '## Claims Detail\\n\\n';
+        DATA.claims.forEach(c => {{
+            report += '### ' + c.claim_id + '\\n';
+            report += '**' + c.text + '**\\n\\n';
+            c.evidence.forEach(e => {{
+                const key = c.claim_id + ':' + e.evidence_id;
+                const v = state.verifications[key] || {{}};
+                const note = state.notes[key] || '';
+                const icon = v.status === 'external_verified' ? '[V]' : v.status === 'author_verified' ? '[A]' : '[ ]';
+                report += '- ' + icon + ' ' + e.evidence_id + ' (' + e.relation + ')\\n';
+                if (note) report += '  - *Note:* ' + note + '\\n';
+            }});
+            report += '\\n';
+        }});
+
+        const blob = new Blob([report], {{ type: 'text/markdown' }});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'verification_report_' + DATA.paper_id + '_' + new Date().toISOString().slice(0,10) + '.md';
+        a.click();
+        URL.revokeObjectURL(url);
+    }}
+
+    function exportData() {{
+        const exportObj = {{ paper_id: DATA.paper_id, reviewer: reviewerName, exported_at: new Date().toISOString(), verifications: state.verifications, notes: state.notes }};
+        const blob = new Blob([JSON.stringify(exportObj, null, 2)], {{ type: 'application/json' }});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'review_data_' + DATA.paper_id + '_' + new Date().toISOString().slice(0,10) + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }}
+
+    render();
+    </script>
+</body>
+</html>'''
+
+    out_path = Path(args.out)
+    out_path.write_text(html, encoding='utf-8')
+    print(f"[living_paper] static HTML reviewer exported: {out_path}")
+    print(f"  - {len(claims_data)} claims, {sum(len(c['evidence']) for c in claims_data)} evidence links")
+    print(f"  - Open in any browser, no server needed")
+    print(f"  - Reviewer progress saved in browser localStorage")
+
+
+def export_package_cmd(args: argparse.Namespace) -> None:
+    """Export a reviewer package folder with HTML, launchers, and README."""
+    import stat
+
+    pub_path, _ = db_paths()
+    if not pub_path.exists():
+        die(f"database not found: {pub_path} — run 'lp.py init' first")
+
+    paper_id = args.paper
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # First generate the HTML using export_html_cmd logic
+    html_path = out_dir / "review.html"
+
+    # Create a mock args object for export_html_cmd
+    class HtmlArgs:
+        pass
+    html_args = HtmlArgs()
+    html_args.paper = paper_id
+    html_args.out = str(html_path)
+
+    export_html_cmd(html_args)
+
+    # Create README.txt
+    readme = f"""LIVING PAPER VERIFICATION REVIEW
+================================
+
+Paper: {paper_id}
+
+HOW TO USE THIS REVIEW INTERFACE
+--------------------------------
+
+1. OPEN THE REVIEW
+   - Double-click "Open Review" (Mac) or "Open Review.bat" (Windows)
+   - Or just open "review.html" directly in your web browser
+
+2. DO YOUR REVIEW
+   - Enter your name at the top
+   - For each claim-evidence link, click one of:
+     - "Verified" = you independently confirm this evidence supports the claim
+     - "Author Only" = evidence exists but you cannot independently verify
+     - "Not Verified" = you have concerns about this link
+   - Add notes in the text boxes as needed
+
+3. GENERATE YOUR REPORT
+   - Click the green "Generate Report" button at the top
+   - A markdown file will download automatically
+   - Send this file back to the author(s)
+
+YOUR PROGRESS IS AUTO-SAVED
+---------------------------
+Your work is saved in your browser's local storage. You can close
+the browser and come back later - your progress will still be there.
+
+If you need to review on a different computer, use "Export Data"
+to save your progress as a JSON file.
+
+QUESTIONS?
+----------
+Contact the paper author(s) if you have any questions about
+the verification process.
+
+"""
+    readme_path = out_dir / "README.txt"
+    readme_path.write_text(readme, encoding='utf-8')
+
+    # Create Mac launcher (.command file)
+    mac_launcher = f'''#!/bin/bash
+# Open the Living Paper review interface
+cd "$(dirname "$0")"
+open review.html
+'''
+    mac_path = out_dir / "Open Review.command"
+    mac_path.write_text(mac_launcher, encoding='utf-8')
+    # Make executable
+    mac_path.chmod(mac_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    # Create Windows launcher (.bat file)
+    win_launcher = '''@echo off
+REM Open the Living Paper review interface
+start "" "%~dp0review.html"
+'''
+    win_path = out_dir / "Open Review.bat"
+    win_path.write_text(win_launcher, encoding='utf-8')
+
+    print(f"[living_paper] reviewer package created: {out_dir}/")
+    print(f"  - review.html        (the review interface)")
+    print(f"  - README.txt         (instructions for reviewers)")
+    print(f"  - Open Review.command (Mac launcher)")
+    print(f"  - Open Review.bat    (Windows launcher)")
+    print(f"\nShare this folder with reviewers - they just double-click to start.")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="lp", description="living_paper v0.1")
+    p = argparse.ArgumentParser(prog="lp", description="living_paper v0.5")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("init", help="initialize DBs and policies")
@@ -585,6 +1004,14 @@ def build_parser() -> argparse.ArgumentParser:
     pre = sub.add_parser("prereview", help="generate pre-review report of contested claims")
     pre.add_argument("--out", required=True)
 
+    html = sub.add_parser("export-html", help="export self-contained HTML reviewer (no server)")
+    html.add_argument("--paper", required=True, help="paper_id to export")
+    html.add_argument("--out", required=True, help="output HTML file path")
+
+    pkg = sub.add_parser("export-package", help="export reviewer package folder (HTML + launchers + README)")
+    pkg.add_argument("--paper", required=True, help="paper_id to export")
+    pkg.add_argument("--out", required=True, help="output folder path")
+
     return p
 
 def main(argv: Optional[Iterable[str]] = None) -> None:
@@ -601,6 +1028,10 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         verify_export_cmd(args)
     elif args.cmd == "prereview":
         prereview_cmd(args)
+    elif args.cmd == "export-html":
+        export_html_cmd(args)
+    elif args.cmd == "export-package":
+        export_package_cmd(args)
     else:
         die(f"unknown command: {args.cmd}")
 
