@@ -1,0 +1,47 @@
+# Entity Redaction Configuration
+# ==============================
+# This file maps identifying entities (vendor names, sites, etc.) to anonymized labels.
+# Use with: lp.py ingest --entities entities.yaml
+#           lp.py export --entities entities.yaml
+#           reviewer_app.py --entities entities.yaml
+
+# Robot/automation vendor names
+vendors:
+  Ambidextrous: "Vendor A"
+  Dorabot: "Vendor B"
+  Vicarious: "Vendor C"
+  Kindred: "Vendor D"
+  Fetch: "Vendor E"
+  EuroSort: "Vendor F"
+  6 River: "Vendor G"
+  Locus: "Vendor H"
+  Geek+: "Vendor I"
+  GreyOrange: "Vendor J"
+
+# Site/facility names
+sites:
+  Bloomington: "Site Alpha"
+  Hebron: "Site Beta"
+  Commerce: "Site Gamma"
+  Ontario: "Site Delta"
+  # Add more as needed
+
+# Company/organization names
+companies:
+  # Replace with actual company names that need redaction
+  # Example:
+  # "Acme Corp": "Company X"
+
+# Project/program names
+projects:
+  ACHIEVE: "Project-A"
+  # Add internal project names that could identify the organization
+
+# Regex patterns for dynamic redaction
+# These catch things like specific dollar amounts, dates, etc.
+patterns:
+  # Uncomment if you want to redact specific number formats
+  # - pattern: "\\$\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?"
+  #   replacement: "[AMOUNT]"
+  # - pattern: "\\d{1,2}/\\d{1,2}/\\d{2,4}"
+  #   replacement: "[DATE]"

@@ -101,6 +101,39 @@ python3 lp.py export-package --paper your-paper-id --out ./reviewer_folder
 - **Reviewer Packages**: Create complete folders with HTML, README, and double-click launchers (Mac/Windows)
 - **Prevalence Metadata**: Track informant coverage, contradicting evidence counts, and saturation notes
 - **Contradiction Badges**: Visual highlighting of contradicting evidence in the reviewer interface
+- **Entity Redaction**: Built-in tools to anonymize vendor names, sites, and other PII before sharing
+
+### Author Workflow: Preparing Data for Verification
+
+Before generating a reviewer package, authors often need to redact identifying information. Living Paper includes built-in redaction tools:
+
+```bash
+# 1. Create your entities file (see entities_example.yaml)
+cp entities_example.yaml entities.yaml
+# Edit entities.yaml with your specific replacements
+
+# 2. Preview what would be redacted
+python3 lp.py redact check --input claims.jsonl --entities entities.yaml
+
+# 3. Apply redaction to files
+python3 lp.py redact apply --input claims.jsonl --output claims_redacted.jsonl --entities entities.yaml
+python3 lp.py redact apply --input evidence.jsonl --output evidence_redacted.jsonl --entities entities.yaml
+
+# 4. Or redact automatically during ingest
+python3 lp.py ingest --claims claims.jsonl --evidence evidence.jsonl --links links.csv --entities entities.yaml
+```
+
+The `entities.yaml` file maps identifying names to anonymized labels:
+
+```yaml
+vendors:
+  Kindred: "Vendor A"
+  Vicarious: "Vendor B"
+sites:
+  Bloomington: "Site Alpha"
+projects:
+  ACHIEVE: "Project-A"
+```
 
 ---
 
@@ -109,6 +142,7 @@ python3 lp.py export-package --paper your-paper-id --out ./reviewer_folder
 | Document | What It Covers |
 |----------|----------------|
 | [Getting Started](docs/GETTING_STARTED.md) | Step-by-step setup for first-time users |
+| [For Authors](docs/FOR_AUTHORS.md) | Complete author workflow: prep, redact, verify, export |
 | [Core Concepts](docs/CONCEPTS.md) | The intellectual framework—why this works |
 | [Pre-Review Methodology](docs/PREREVIEW.md) | How to use challenges to strengthen your paper |
 | [For Reviewers](docs/FOR_REVIEWERS.md) | How to evaluate a living paper verification package |

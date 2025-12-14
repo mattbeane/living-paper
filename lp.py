@@ -7,13 +7,17 @@ Private store: lp_private.sqlite (protected pointers; gitignore)
 
 Commands:
   init
-  ingest --claims <claims.jsonl> --evidence <evidence.jsonl> --links <links.csv>
+  ingest --claims <claims.jsonl> --evidence <evidence.jsonl> --links <links.csv> [--entities <entities.yaml>]
   lint
   export --out <dir>
   verify-export --out <dir>
   prereview --out <file>
   export-html --paper <paper_id> --out <file>
   export-package --paper <paper_id> --out <folder>
+
+Author tools:
+  redact check --input <file.jsonl> --entities <entities.yaml>
+  redact apply --input <file.jsonl> --output <file.jsonl> --entities <entities.yaml>
 
 No external dependencies for core. Optional: pyyaml for entity redaction.
 """
@@ -29,6 +33,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Tuple
+
+# Optional redaction support (for authors)
+try:
+    from redact import EntityRedactor, RedactionStats
+    HAS_REDACT = True
+except ImportError:
+    HAS_REDACT = False
+    EntityRedactor = None
+    RedactionStats = None
 
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -94,7 +107,7 @@ def upsert_paper(db: sqlite3.Connection, paper_id: str, title: Optional[str] = N
     )
     db.commit()
 
-def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
+def ingest_claims(db: sqlite3.Connection, claims_path: Path, redactor=None, stats=None) -> int:
     n = 0
     with claims_path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -117,6 +130,11 @@ def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
                 "measurement": "methodological",
             }
             claim_type = type_map.get(claim_type, claim_type)
+
+            # Apply redaction to text field if redactor is provided
+            text = obj["text"]
+            if redactor:
+                text = redactor.redact(text, stats)
 
             db.execute(
                 """
@@ -145,7 +163,7 @@ def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
                     obj["claim_id"],
                     obj["paper_id"],
                     claim_type,
-                    obj["text"],
+                    text,  # potentially redacted
                     obj.get("confidence", 0.5),
                     obj.get("status","draft"),
                     obj.get("verification_status", "unverified"),
@@ -164,7 +182,7 @@ def ingest_claims(db: sqlite3.Connection, claims_path: Path) -> int:
     db.commit()
     return n
 
-def ingest_evidence(db: sqlite3.Connection, evidence_path: Path) -> int:
+def ingest_evidence(db: sqlite3.Connection, evidence_path: Path, redactor=None, stats=None) -> int:
     n = 0
     with evidence_path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -180,6 +198,16 @@ def ingest_evidence(db: sqlite3.Connection, evidence_path: Path) -> int:
             meta = obj.get("meta", {})
             if not isinstance(meta, dict):
                 die("evidence.meta must be an object/dict")
+
+            # Apply redaction to summary field if redactor is provided
+            summary = obj["summary"]
+            if redactor:
+                summary = redactor.redact(summary, stats)
+                # Also redact string values in meta
+                for key, val in meta.items():
+                    if isinstance(val, str):
+                        meta[key] = redactor.redact(val, stats)
+
             db.execute(
                 """
                 INSERT INTO evidence(evidence_id,paper_id,evidence_type,summary,sensitivity_tier,meta_json,created_at,updated_at)
@@ -196,7 +224,7 @@ def ingest_evidence(db: sqlite3.Connection, evidence_path: Path) -> int:
                     obj["evidence_id"],
                     obj["paper_id"],
                     obj["evidence_type"],
-                    obj["summary"],
+                    summary,  # potentially redacted
                     obj["sensitivity_tier"],
                     json.dumps(meta, ensure_ascii=False),
                     now(),
@@ -242,11 +270,25 @@ def ingest_cmd(args: argparse.Namespace) -> None:
     if not evidence_p.exists(): die(f"evidence file not found: {evidence_p}")
     if not links_p.exists(): die(f"links file not found: {links_p}")
 
-    nc = ingest_claims(db, claims_p)
-    ne = ingest_evidence(db, evidence_p)
+    # Set up optional redaction
+    redactor = None
+    redact_stats = None
+    if args.entities:
+        if not HAS_REDACT:
+            die("redact.py module not found. Ensure redact.py is in the same directory as lp.py")
+        entities_p = Path(args.entities).resolve()
+        if not entities_p.exists():
+            die(f"entities file not found: {entities_p}")
+        redactor = EntityRedactor(entities_path=entities_p)
+        redact_stats = RedactionStats()
+
+    nc = ingest_claims(db, claims_p, redactor=redactor, stats=redact_stats)
+    ne = ingest_evidence(db, evidence_p, redactor=redactor, stats=redact_stats)
     nl = ingest_links(db, links_p)
 
     print(f"[living_paper] ingested: {nc} claims, {ne} evidence items, {nl} links into {pub_path}")
+    if redact_stats and redact_stats.total_redactions > 0:
+        print(f"[living_paper] redacted {redact_stats.total_redactions} entities during ingest")
 
 def lint_cmd(args: argparse.Namespace) -> None:
     pub_path, _ = db_paths()
@@ -982,6 +1024,54 @@ start "" "%~dp0review.html"
     print(f"\nShare this folder with reviewers - they just double-click to start.")
 
 
+def redact_cmd(args: argparse.Namespace) -> None:
+    """Wrapper for redaction commands (author tool)."""
+    if not HAS_REDACT:
+        die("redact.py module not found. Ensure redact.py is in the same directory as lp.py")
+
+    from redact import EntityRedactor, RedactionStats, load_jsonl, save_jsonl
+
+    entities_p = Path(args.entities).resolve()
+    if not entities_p.exists():
+        die(f"entities file not found: {entities_p}")
+
+    redactor = EntityRedactor(entities_path=entities_p)
+
+    if args.redact_cmd == "check":
+        # Preview what would be redacted
+        input_p = Path(args.input).resolve()
+        if not input_p.exists():
+            die(f"input file not found: {input_p}")
+
+        records = load_jsonl(input_p)
+        stats = RedactionStats()
+
+        for record in records:
+            redactor.redact_jsonl_record(record, stats=stats)
+
+        print(redactor.generate_report(stats))
+        if stats.total_redactions > 0:
+            print(f"\n[redact] Would redact {stats.total_redactions} entities in {len(records)} records")
+        else:
+            print(f"\n[redact] No entities to redact in {len(records)} records")
+
+    elif args.redact_cmd == "apply":
+        # Apply redaction to file
+        input_p = Path(args.input).resolve()
+        output_p = Path(args.output).resolve()
+        if not input_p.exists():
+            die(f"input file not found: {input_p}")
+
+        records = load_jsonl(input_p)
+        stats = RedactionStats()
+
+        redacted_records = [redactor.redact_jsonl_record(r, stats=stats) for r in records]
+        save_jsonl(redacted_records, output_p)
+
+        print(f"[redact] Redacted {stats.total_redactions} entities across {len(records)} records")
+        print(f"[redact] Output: {output_p}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="lp", description="living_paper v0.5")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -992,6 +1082,7 @@ def build_parser() -> argparse.ArgumentParser:
     ing.add_argument("--claims", required=True)
     ing.add_argument("--evidence", required=True)
     ing.add_argument("--links", required=True)
+    ing.add_argument("--entities", help="optional entities YAML/JSON for PII redaction during ingest")
 
     sub.add_parser("lint", help="run traceability checks")
 
@@ -1011,6 +1102,19 @@ def build_parser() -> argparse.ArgumentParser:
     pkg = sub.add_parser("export-package", help="export reviewer package folder (HTML + launchers + README)")
     pkg.add_argument("--paper", required=True, help="paper_id to export")
     pkg.add_argument("--out", required=True, help="output folder path")
+
+    # Redaction commands (author tools)
+    redact_p = sub.add_parser("redact", help="redact entities from JSONL files (author tool)")
+    redact_sub = redact_p.add_subparsers(dest="redact_cmd", required=True)
+
+    rc = redact_sub.add_parser("check", help="preview what would be redacted")
+    rc.add_argument("--input", "-i", required=True, help="input JSONL file")
+    rc.add_argument("--entities", "-e", required=True, help="entities YAML/JSON file")
+
+    ra = redact_sub.add_parser("apply", help="apply redaction to file")
+    ra.add_argument("--input", "-i", required=True, help="input JSONL file")
+    ra.add_argument("--output", "-o", required=True, help="output JSONL file")
+    ra.add_argument("--entities", "-e", required=True, help="entities YAML/JSON file")
 
     return p
 
@@ -1032,6 +1136,8 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         export_html_cmd(args)
     elif args.cmd == "export-package":
         export_package_cmd(args)
+    elif args.cmd == "redact":
+        redact_cmd(args)
     else:
         die(f"unknown command: {args.cmd}")
 
