@@ -1,164 +1,147 @@
 # Living Paper
 
-**Bidirectional claim-evidence traceability for qualitative research.**
+**Make your qualitative research verifiable—without exposing your data.**
 
-Living Paper is a local-first tool that maintains verifiable links between the claims you make in papers and the evidence supporting them—while keeping sensitive data protected. It enables:
+---
 
-- **Pre-review**: Surface contested claims and weak evidence *before* submission
-- **Verification**: Let reviewers verify claims without exposing protected transcripts
-- **Audit trail**: Track how claims evolve as you engage with your data
+## The Problem You Know
 
-## Why This Matters
+A reviewer writes:
 
-Academic papers are frozen artifacts. Once published, the journey from data to claim is invisible. Living Paper makes that relationship explicit, auditable, and—where possible—verifiable.
+> "How do I know your informants actually said this? The quotes are compelling, but I have no way to verify they support your claims."
 
-For qualitative research specifically, this addresses the persistent critique that findings are unfalsifiable because evidence is inaccessible. Living Papers create infrastructure for verification that doesn't currently exist.
+You can't share the transcripts—IRB won't allow it. You can't invite the reviewer into your data—there's no infrastructure for that. So you write a longer methods section, add more quotes, and hope they trust you.
 
-## Quick Start
+They often don't. And honestly? They shouldn't have to.
+
+---
+
+## What Living Paper Does
+
+Living Paper creates a **verification layer** between your claims and your protected data.
+
+For each claim in your paper, you document:
+- What evidence supports it (quotes, observations, statistics)
+- What evidence challenges it (yes, really—this makes your paper stronger)
+- How confident you are, and why
+
+The result is a **verification package** you can share with reviewers. They see:
+- Every claim, with its supporting and challenging evidence summarized
+- Metadata about sources (anonymized role, tenure, site—whatever your IRB allows)
+- A health indicator: Is this claim well-supported? Contested? Weak?
+
+They *don't* see your raw transcripts. But they can verify that evidence exists and that you've engaged honestly with contradictions in your data.
+
+---
+
+## What This Gives You
+
+**Before submission:**
+- Surface contested claims before reviewers do
+- Strengthen weak arguments or drop unsupportable ones
+- Create an audit trail of your reasoning
+
+**During review:**
+- Give reviewers something concrete to evaluate
+- Preempt "how do I know?" objections
+- Demonstrate methodological rigor without exposing protected data
+
+**After publication:**
+- Your paper remains connected to its evidentiary basis
+- Future researchers can verify (with appropriate access)
+- Your claims are traceable, not just asserted
+
+---
+
+## Who This Is For
+
+- **Qualitative researchers** who want their work taken seriously by skeptics
+- **Mixed-methods researchers** who need to integrate qual evidence with quant findings
+- **Anyone under IRB** who can't share raw data but wants verifiable claims
+- **Reviewers and editors** who want to evaluate evidence without accessing protected transcripts
+
+You don't need to be technical. You don't need to use AI. You need a text editor and a willingness to be explicit about what supports your claims.
+
+---
+
+## How It Works (The Short Version)
+
+1. **You document your claims** — Each substantive claim gets an ID and a text description
+2. **You document your evidence** — Quotes, observations, statistics—summarized, not raw
+3. **You link them** — Claim X is supported by Evidence Y, challenged by Evidence Z
+4. **You run the tool** — It checks your work and generates a verification package
+5. **You share the package** — Reviewers see the structure; you keep the raw data
+
+That's it. The tool handles the bookkeeping. You do the thinking.
+
+---
+
+## Getting Started
+
+**New to command-line tools?** Start with our [Getting Started Guide](docs/GETTING_STARTED.md)—it assumes nothing and walks you through every step.
+
+**Comfortable with CLI?** Here's the quick version:
 
 ```bash
-# Clone and enter the repo
 git clone https://github.com/mattbeane/living-paper.git
 cd living-paper
-
-# Initialize in your project
 python3 lp.py init
-
-# Ingest your claims, evidence, and links
-python3 lp.py ingest \
-  --claims path/to/claims.jsonl \
-  --evidence path/to/evidence.jsonl \
-  --links path/to/links.csv
-
-# Check for traceability issues
+python3 lp.py ingest --claims your_claims.jsonl --evidence your_evidence.jsonl --links your_links.csv
 python3 lp.py lint
-
-# Generate pre-review report (surface contested claims)
 python3 lp.py prereview
-
-# Export verification package
-python3 lp.py export --out ./exports/PUBLIC
+python3 lp.py export --out ./verification_package
 ```
 
-## Core Concepts
+---
 
-### Claims
-Every substantive claim in your paper is a discrete, addressable object:
-```json
-{
-  "claim_id": "CLM-001",
-  "paper_id": "PAPER-001",
-  "claim_type": "mechanism",
-  "text": "Managers used uncertainty talk to justify process experimentation.",
-  "status": "draft",
-  "verification_mode": "public_provenance"
-}
-```
+## Documentation
 
-### Evidence
-Data supporting claims, with appropriate sensitivity tiers:
-```json
-{
-  "evidence_id": "EVD-001",
-  "paper_id": "PAPER-001",
-  "evidence_type": "quote",
-  "summary": "Ops manager describes not knowing the automation timeline.",
-  "sensitivity_tier": "PUBLIC",
-  "meta": {"interview_id": "INT_023", "informant_role_bin": "operations_manager"}
-}
-```
+| Document | What It Covers |
+|----------|----------------|
+| [Getting Started](docs/GETTING_STARTED.md) | Step-by-step setup for first-time users |
+| [Core Concepts](docs/CONCEPTS.md) | The intellectual framework—why this works |
+| [Pre-Review Methodology](docs/PREREVIEW.md) | How to use challenges to strengthen your paper |
+| [For Reviewers](docs/FOR_REVIEWERS.md) | How to evaluate a living paper verification package |
+| [Full Specification](docs/LIVING_PAPER_SPEC.md) | Technical details and future roadmap |
 
-### Links
-Typed, weighted connections between claims and evidence:
-- **Relation**: supports, challenges, qualifies, illustrates, necessitates
-- **Weight**: central, supporting, peripheral
+---
 
-## Pre-Review Workflow
+## The Hard Question
 
-The `prereview` command surfaces claims that need attention before submission:
+> "Isn't this just extra work?"
 
-1. **Contested claims**: Evidence cuts both ways
-2. **Weak claims**: Few supporting links, low confidence
-3. **Challenged claims**: Direct contradictions in the data
+Yes. But it's work you should be doing anyway—making your evidence-claim links explicit. Most researchers do this in their heads or in messy notes. Living Paper gives it structure.
 
-For each flagged claim, the system generates adjudication prompts appropriate to the claim type:
+The payoff: fewer R&Rs, stronger papers, and a response to the persistent critique that qualitative findings are unfalsifiable.
 
-- **Empirical/Quant claims**: Can only be challenged by other quant data
-- **Mechanism claims**: Use behavioral patterns to rule out alternatives
+---
 
-This isn't p-hacking—your quantitative data is fixed. It's principled mechanism refinement with an audit trail.
+## No AI Required
 
-See `docs/PREREVIEW.md` for the full methodology.
+Living Paper works entirely with manual input. You create the claim files, evidence files, and links. The tool validates and packages them.
 
-## Three-Tier Access Control
+If you *do* use AI-assisted analysis (like [paper-mining-agents](https://github.com/mattbeane/paper-mining-agents)), Living Paper integrates naturally—those tools can generate the input files. But AI is optional.
 
-| Tier | Contains | Who Sees It |
-|------|----------|-------------|
-| PUBLIC | Claim text, evidence summaries, link metadata | Anyone |
-| CONTROLLED | Anonymized quotes with binned demographics | Approved reviewers |
-| WITNESS_ONLY | Raw transcripts with hashed identifiers | Author only |
-
-## Input Formats
-
-### claims.jsonl
-One JSON object per line:
-- `claim_id` (string, required)
-- `paper_id` (string, required)
-- `claim_type`: mechanism, descriptive, boundary_condition, measurement, process
-- `text` (string, required)
-- `status`: draft, verified, superseded, retracted
-- `verification_mode`: public_provenance, controlled_access, witness_only
-
-### evidence.jsonl
-One JSON object per line:
-- `evidence_id` (string, required)
-- `paper_id` (string, required)
-- `evidence_type`: quote, fieldnote, observation, quant_output, other
-- `summary` (string, required) — non-identifying description
-- `sensitivity_tier`: PUBLIC, CONTROLLED, WITNESS_ONLY
-- `meta` (object) — binned metadata (interview_id, role_bin, tenure_bin, site_bin)
-
-### links.csv
-Columns: `claim_id, evidence_id, relation, weight, note`
-
-## Git Hygiene
-
-Add to your `.gitignore`:
-```
-lp_private.sqlite
-exports/WITNESS_ONLY/
-exports/CONTROLLED/
-```
-
-## Quant/Qual Hierarchy
-
-A critical methodological principle embedded in Living Paper:
-
-> **Quantitative findings are ground truth.** Qualitative data can help explain *why* patterns exist, but cannot refute what the numbers show.
-
-When a manager says "there was a mass exodus" but your retention data shows 94% stayed, the manager's statement is *evidence that their mental model is wrong*—not a challenge to the retention finding.
-
-This hierarchy is enforced in pre-review adjudication prompts.
-
-## Related Projects
-
-- **[paper-mining-agents](https://github.com/mattbeane/paper-mining-agents)**: AI-assisted paper writing workflows that can generate living paper artifacts
+---
 
 ## Requirements
 
-- Python 3.10+
-- No external dependencies (uses stdlib sqlite3, json, csv)
+- Python 3.10 or later
+- A text editor
+- Your claims, evidence, and links in simple file formats (JSON lines, CSV)
 
-## Status
+No external dependencies. No cloud services. Everything runs on your computer.
 
-**v0.1** — Local-first implementation with:
-- Dual SQLite stores (public metadata + private pointers)
-- CLI for init, ingest, lint, export, prereview
-- Three-tier access control
-- Pre-review workflow
-
-See `docs/LIVING_PAPER_SPEC.md` for the full vision through v1.0.
+---
 
 ## Author
 
 Matt Beane
+UC Santa Barbara
+mattbeane@ucsb.edu
+
+---
+
+## License
+
+MIT. Use it, modify it, share it.
