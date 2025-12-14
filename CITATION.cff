@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Living Paper"
+abstract: "A verification layer for qualitative research that links claims to evidence without exposing protected data."
+authors:
+  - family-names: Beane
+    given-names: Matt
+    email: mattbeane@ucsb.edu
+    affiliation: UC Santa Barbara
+    orcid: "https://orcid.org/0000-0002-1961-4585"
+repository-code: "https://github.com/mattbeane/living-paper"
+license: MIT
+version: "0.5.0"
+date-released: "2024-12-14"
+keywords:
+  - qualitative research
+  - verification
+  - research transparency
+  - IRB
+  - claim-evidence traceability

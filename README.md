@@ -164,7 +164,7 @@ The payoff: fewer R&Rs, stronger papers, and a response to the persistent critiq
 
 Living Paper works entirely with manual input. You create the claim files, evidence files, and links. The tool validates and packages them.
 
-If you *do* use AI-assisted analysis (like [paper-mining-agents](https://github.com/mattbeane/paper-mining-agents)), Living Paper integrates naturally—those tools can generate the input files. But AI is optional.
+If you *do* use AI-assisted analysis (like [paper-mining-agent-suite](https://github.com/mattbeane/paper-mining-agent-suite)), Living Paper integrates naturally—those tools can generate the input files. But AI is optional.
 
 ---
 
@@ -185,6 +185,21 @@ UC Santa Barbara
 mattbeane@ucsb.edu
 
 ---
+
+## Citation
+
+If you use Living Paper in your research, please cite it:
+
+```bibtex
+@software{beane2024livingpaper,
+  author = {Beane, Matt},
+  title = {Living Paper},
+  year = {2024},
+  url = {https://github.com/mattbeane/living-paper}
+}
+```
+
+See [`CITATION.cff`](CITATION.cff) for the full citation file.
 
 ## License
 
