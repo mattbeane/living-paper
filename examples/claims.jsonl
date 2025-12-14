@@ -1,0 +1,2 @@
+{"claim_id": "CLM-001", "paper_id": "PAPER-001", "claim_type": "mechanism", "text": "Managers used uncertainty talk to justify process experimentation.", "status": "draft", "verification_mode": "public_provenance", "frame_id": "FRAME-A"}
+{"claim_id": "CLM-002", "paper_id": "PAPER-001", "claim_type": "boundary_condition", "text": "The mechanism is stronger in high-automation-shock sites.", "status": "draft", "verification_mode": "controlled_access", "frame_id": "FRAME-A"}

@@ -1,0 +1,22 @@
+# datasets.yaml
+# Per-dataset export and privacy policy. This is where you encode IRB constraints.
+#
+# RULE OF THUMB FOR V0.1:
+# - Default deny: nothing is PUBLIC unless explicitly allowed.
+# - Always bin/suppress rare categories in qual metadata (roles/tenure/site).
+#
+datasets:
+  example_dataset:
+    irb_protocol_id: "IRB-XXXX"
+    retention_policy: "keep"
+    public_allow_fields:
+      evidence.meta:
+        - interview_id
+        - informant_role_bin
+        - informant_tenure_bin
+        - site_bin
+        - line_start
+        - line_end
+    suppression:
+      min_cell_size: 5
+      max_unique_sites: 10

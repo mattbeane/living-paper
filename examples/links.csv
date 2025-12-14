@@ -1,0 +1,3 @@
+claim_id,evidence_id,relation,weight,note
+CLM-001,EVD-001,supports,central,Core evidence for mechanism
+CLM-001,EVD-002,challenges,supporting,Counterpoint from compliance perspective

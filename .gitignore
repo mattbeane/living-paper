@@ -1,0 +1,32 @@
+# Living Paper private data
+lp_private.sqlite
+exports/WITNESS_ONLY/
+exports/CONTROLLED/
+
+# User data (not part of the tool)
+*.csv
+*.xlsx
+*.jsonl
+!examples/*.jsonl
+!examples/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+ENV/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary
+*.tmp
+*.temp
