@@ -10,7 +10,7 @@ from pathlib import Path
 from collections import defaultdict
 
 def get_db():
-    db_path = Path(__file__).parent.parent / "analysis" / "living_paper" / "lp_public.sqlite"
+    db_path = Path(__file__).parent / "analysis" / "living_paper" / "lp_public.sqlite"
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
@@ -358,6 +358,6 @@ def generate_html():
 
 if __name__ == "__main__":
     import sys
-    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "analysis" / "living_paper" / "dashboard.html"
+    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "analysis" / "living_paper" / "dashboard.html"
     out_path.write_text(generate_html())
     print(f"Dashboard written to {out_path}")

@@ -2,6 +2,8 @@
 
 This guide walks you through preparing your qualitative research for Living Paper verification, from raw data to reviewer-ready packages.
 
+> **Prefer a guided notebook?** If you're less comfortable with command-line tools, try the [Jupyter Workflow Guide](../examples/workflow_guide.ipynb). It walks through the same process with explanations and runnable code cells.
+
 ## Overview
 
 The author workflow has four phases:

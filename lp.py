@@ -53,8 +53,8 @@ def die(msg: str, code: int = 2) -> None:
     raise SystemExit(code)
 
 def project_root() -> Path:
-    # assume script is in living_paper/ inside repo
-    return Path(__file__).resolve().parents[1]
+    # script is at repo root
+    return Path(__file__).resolve().parent
 
 def lp_dir() -> Path:
     return project_root() / "analysis" / "living_paper"
@@ -456,13 +456,14 @@ def verify_export_cmd(args: argparse.Namespace) -> None:
     with evidence_manifest.open("w", encoding="utf-8") as f:
         evidence_data = []
         for e in evidence:
+            is_public = e["sensitivity_tier"] == "PUBLIC"
             evidence_data.append({
                 "evidence_id": e["evidence_id"],
                 "paper_id": e["paper_id"],
                 "evidence_type": e["evidence_type"],
-                "summary": e["summary"] if e["sensitivity_tier"] == "PUBLIC" else "[CONTROLLED]",
+                "summary": e["summary"] if is_public else "[CONTROLLED]",
                 "sensitivity_tier": e["sensitivity_tier"],
-                "meta": json.loads(e["meta_json"] or "{}"),
+                "meta": json.loads(e["meta_json"] or "{}") if is_public else {},
             })
         json.dump({"evidence": evidence_data, "generated_at": now()}, f, indent=2)
 
@@ -470,7 +471,8 @@ def verify_export_cmd(args: argparse.Namespace) -> None:
     links = db.execute("""
       SELECT l.claim_id, l.evidence_id, l.relation, l.weight,
              l.verification_status, l.verified_by, l.verified_at, l.note,
-             c.text as claim_text, e.summary as evidence_summary
+             c.text as claim_text, e.summary as evidence_summary,
+             e.sensitivity_tier as evidence_tier
       FROM claim_evidence_link l
       JOIN claim c ON c.claim_id = l.claim_id
       JOIN evidence e ON e.evidence_id = l.evidence_id
@@ -497,8 +499,9 @@ def verify_export_cmd(args: argparse.Namespace) -> None:
                 f.write(f"**Claim**: {l['claim_text']}\n\n")
 
             status_icon = "✓" if l["verification_status"] == "external_verified" else "[ ]"
+            summary = l["evidence_summary"] if l["evidence_tier"] == "PUBLIC" else "[CONTROLLED]"
             f.write(f"- {status_icon} `{l['evidence_id']}` ({l['relation']}, {l['weight']})\n")
-            f.write(f"  - Summary: {l['evidence_summary']}\n")
+            f.write(f"  - Summary: {summary}\n")
             if l["note"]:
                 f.write(f"  - Note: {l['note']}\n")
             if l["verified_by"]:
