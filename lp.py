@@ -704,40 +704,141 @@ def export_html_cmd(args: argparse.Namespace) -> None:
             'evidence': evidence_list
         })
 
+    # Extract unique values for filters from the data
+    all_sites = set()
+    all_roles = set()
+    all_evidence_types = set()
+    for c in claims_data:
+        for e in c['evidence']:
+            if 'meta' in e:
+                meta = e.get('meta', {})
+            else:
+                meta = {}
+            # Try to extract site/role from evidence_id pattern or meta
+            all_evidence_types.add(e.get('evidence_type', 'unknown'))
+
+    # Extract from meta_json in evidence table
+    evidence_meta = db.execute("""
+        SELECT DISTINCT
+            json_extract(meta_json, '$.site_bin') as site,
+            json_extract(meta_json, '$.informant_role_bin') as role
+        FROM evidence WHERE paper_id = ?
+    """, (paper_id,)).fetchall()
+    for row in evidence_meta:
+        if row['site']: all_sites.add(row['site'])
+        if row['role']: all_roles.add(row['role'])
+
     # Generate HTML
-    data_json = json.dumps({'paper_id': paper_id, 'title': paper['title'], 'claims': claims_data, 'generated_at': now()})
+    data_json = json.dumps({
+        'paper_id': paper_id,
+        'title': paper['title'],
+        'claims': claims_data,
+        'generated_at': now(),
+        'filters': {
+            'sites': sorted(list(all_sites)),
+            'roles': sorted(list(all_roles)),
+            'evidence_types': sorted(list(all_evidence_types))
+        }
+    })
+
+    # Get paper title for display
+    paper_title = paper['title'] or paper_id
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Review: {paper_id}</title>
+    <title>Living Paper Review: {paper_id}</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }}
-        .container {{ max-width: 1000px; margin: 0 auto; padding: 20px; }}
-        header {{ background: #1a1a2e; color: white; padding: 20px; margin-bottom: 20px; }}
-        header h1 {{ font-size: 1.3rem; font-weight: 500; }}
-        header p {{ opacity: 0.8; font-size: 0.85rem; margin-top: 5px; }}
-        .reviewer-bar {{ background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
+        header {{ background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%); color: white; padding: 24px 20px; margin-bottom: 20px; }}
+        .header-content {{ display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }}
+        .header-left {{ flex: 1; }}
+        .header-brand {{ font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin-bottom: 6px; }}
+        .header-brand a {{ color: #90caf9; text-decoration: none; font-weight: 500; }}
+        .header-brand a:hover {{ text-decoration: underline; color: #bbdefb; }}
+        .header-brand .gh-icon {{ display: inline-block; vertical-align: middle; margin-left: 4px; opacity: 0.8; }}
+        header h1 {{ font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }}
+        header .paper-id {{ font-family: monospace; font-size: 0.8rem; opacity: 0.6; }}
+        header p {{ opacity: 0.85; font-size: 0.85rem; margin-top: 8px; max-width: 600px; }}
+        .header-right {{ text-align: right; }}
+        .header-stats {{ font-size: 0.75rem; opacity: 0.8; }}
+
+        /* Onboarding callout */
+        .onboarding {{ background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border: 1px solid #90caf9; border-radius: 8px; padding: 16px 20px; margin-bottom: 15px; }}
+        .onboarding h4 {{ font-size: 0.9rem; color: #1565c0; margin-bottom: 8px; }}
+        .onboarding p {{ font-size: 0.8rem; color: #1976d2; margin-bottom: 0; }}
+        .onboarding ul {{ font-size: 0.8rem; color: #1976d2; margin: 8px 0 0 20px; }}
+        .onboarding .dismiss {{ float: right; background: none; border: none; color: #1565c0; cursor: pointer; font-size: 1.2rem; line-height: 1; padding: 0; opacity: 0.6; }}
+        .onboarding .dismiss:hover {{ opacity: 1; }}
+        .onboarding.hidden {{ display: none; }}
+        .reviewer-bar {{ background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }}
         .reviewer-bar input {{ padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; }}
         .reviewer-bar button {{ padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }}
         .btn-primary {{ background: #1a1a2e; color: white; }}
         .btn-success {{ background: #4caf50; color: white; }}
+        .btn-warning {{ background: #ff9800; color: white; }}
+
+        /* New: Filter & Explorer Panel */
+        .explorer-panel {{ background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+        .explorer-panel h3 {{ font-size: 0.9rem; margin-bottom: 10px; color: #1a1a2e; }}
+        .filter-row {{ display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }}
+        .filter-group {{ display: flex; flex-direction: column; gap: 4px; }}
+        .filter-group label {{ font-size: 0.7rem; color: #666; text-transform: uppercase; }}
+        .filter-group select, .filter-group input {{ padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; min-width: 120px; }}
+        .search-box {{ flex: 1; min-width: 200px; }}
+        .search-box input {{ width: 100%; padding: 8px 12px; }}
+
+        /* What-if toggles */
+        .whatif-section {{ border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }}
+        .whatif-section h4 {{ font-size: 0.8rem; color: #666; margin-bottom: 8px; }}
+        .whatif-toggles {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+        .whatif-toggle {{ display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f0f0f0; border-radius: 4px; font-size: 0.75rem; cursor: pointer; user-select: none; }}
+        .whatif-toggle.excluded {{ background: #ffcdd2; text-decoration: line-through; }}
+        .whatif-toggle input {{ margin: 0; }}
+
+        /* Robustness Summary */
+        .robustness-panel {{ background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+        .robustness-panel h3 {{ font-size: 0.9rem; margin-bottom: 10px; color: #1a1a2e; display: flex; justify-content: space-between; align-items: center; }}
+        .robustness-panel .toggle-btn {{ font-size: 0.7rem; padding: 4px 8px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; }}
+        .robustness-content {{ display: block; }}
+        .robustness-content.collapsed {{ display: none; }}
+        .robustness-bar {{ display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }}
+        .robustness-label {{ font-size: 0.75rem; width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .robustness-track {{ flex: 1; height: 20px; background: #f0f0f0; border-radius: 4px; overflow: hidden; display: flex; }}
+        .robustness-fill {{ height: 100%; transition: width 0.3s; }}
+        .robustness-fill.supports {{ background: #4caf50; }}
+        .robustness-fill.challenges {{ background: #f44336; }}
+        .robustness-fill.qualifies {{ background: #ff9800; }}
+        .robustness-count {{ font-size: 0.7rem; color: #666; width: 60px; text-align: right; }}
+        .threshold-controls {{ display: flex; gap: 15px; align-items: center; margin-bottom: 12px; padding: 10px; background: #f8f9fa; border-radius: 4px; }}
+        .threshold-controls label {{ font-size: 0.75rem; color: #666; }}
+        .threshold-controls input {{ width: 60px; }}
+        .survival-stat {{ font-size: 0.85rem; padding: 8px 12px; background: #e8f5e9; border-radius: 4px; margin-top: 10px; }}
+        .survival-stat.warning {{ background: #fff3e0; }}
+        .survival-stat.danger {{ background: #ffebee; }}
+
         .claim-card {{ background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 15px; overflow: hidden; }}
+        .claim-card.hidden {{ display: none; }}
+        .claim-card.dim {{ opacity: 0.4; }}
         .claim-header {{ padding: 12px 16px; border-bottom: 1px solid #eee; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }}
         .claim-id {{ font-family: monospace; font-size: 0.75rem; color: #666; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }}
         .claim-type {{ font-size: 0.65rem; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: #e0e0e0; }}
         .claim-type.empirical {{ background: #e3f2fd; color: #1565c0; }}
         .claim-type.theoretical {{ background: #f3e5f5; color: #7b1fa2; }}
+        .claim-type.methodological {{ background: #e0f2f1; color: #00695c; }}
         .status-badge {{ font-size: 0.65rem; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }}
         .status-supported {{ background: #c8e6c9; color: #2e7d32; }}
         .status-partial {{ background: #fff3e0; color: #ef6c00; }}
         .status-contested {{ background: #ffcdd2; color: #c62828; }}
         .status-undocumented {{ background: #e0e0e0; color: #616161; }}
+        .evidence-count-badge {{ font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: #e0e0e0; color: #666; }}
         .claim-body {{ padding: 12px 16px; }}
         .claim-text {{ font-size: 0.95rem; margin-bottom: 10px; }}
+        mark {{ background: #fff59d; padding: 0 2px; }}
         .prevalence {{ padding: 8px 10px; background: #f8f9fa; border-radius: 4px; font-size: 0.75rem; color: #555; margin-bottom: 10px; }}
         .evidence-list {{ padding: 0 16px 16px; }}
         .evidence-item {{ padding: 10px; margin-bottom: 8px; background: #fafafa; border-radius: 6px; border-left: 3px solid #ccc; }}
@@ -745,10 +846,13 @@ def export_html_cmd(args: argparse.Namespace) -> None:
         .evidence-item.challenges {{ border-left-color: #f44336; }}
         .evidence-item.qualifies {{ border-left-color: #ff9800; }}
         .evidence-item.contradicting {{ background: #fff3f3; border-left-color: #f44336; border-left-width: 4px; }}
+        .evidence-item.excluded {{ opacity: 0.3; background: #f5f5f5; }}
         .contradiction-badge {{ background: #f44336; color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; font-weight: bold; margin-left: 8px; }}
+        .excluded-badge {{ background: #9e9e9e; color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; margin-left: 8px; }}
         .evidence-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }}
         .evidence-id {{ font-family: monospace; font-size: 0.7rem; color: #666; }}
         .evidence-relation {{ font-size: 0.6rem; text-transform: uppercase; padding: 2px 5px; border-radius: 3px; background: #e0e0e0; }}
+        .evidence-meta {{ font-size: 0.65rem; color: #888; margin-top: 4px; }}
         .evidence-summary {{ font-size: 0.85rem; color: #444; }}
         .note-input {{ width: 100%; margin-top: 8px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.8rem; resize: vertical; min-height: 50px; }}
         .verify-controls {{ display: flex; gap: 6px; margin-top: 8px; }}
@@ -757,37 +861,226 @@ def export_html_cmd(args: argparse.Namespace) -> None:
         .verify-btn.author {{ background: #ff9800; color: white; }}
         .verify-btn.unverified {{ background: #9e9e9e; color: white; }}
         .verify-btn.active {{ box-shadow: 0 0 0 2px #333; }}
-        .stats {{ display: flex; gap: 15px; font-size: 0.85rem; color: #666; margin-bottom: 15px; }}
+        .stats {{ display: flex; gap: 15px; font-size: 0.85rem; color: #666; margin-bottom: 15px; flex-wrap: wrap; }}
+        .stats .stat-item {{ background: white; padding: 8px 12px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }}
+
+        /* Legend */
+        .legend {{ background: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+        .legend h4 {{ font-size: 0.75rem; color: #666; margin-bottom: 8px; text-transform: uppercase; }}
+        .legend-items {{ display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.75rem; }}
+        .legend-item {{ display: flex; align-items: center; gap: 6px; }}
+        .legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
+        .legend-color.supports {{ background: #4caf50; }}
+        .legend-color.challenges {{ background: #f44336; }}
+        .legend-color.qualifies {{ background: #ff9800; }}
+
+        /* Footer */
+        footer {{ background: #fafafa; border-top: 1px solid #e0e0e0; padding: 20px; margin-top: 40px; }}
+        .footer-content {{ max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }}
+        .footer-brand {{ font-size: 0.8rem; color: #666; }}
+        .footer-brand a {{ color: #1a1a2e; text-decoration: none; font-weight: 500; }}
+        .footer-brand a:hover {{ text-decoration: underline; }}
+        .footer-meta {{ font-size: 0.7rem; color: #999; text-align: right; }}
     </style>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>Verification Review: {paper_id}</h1>
-            <p>Offline reviewer interface - your progress is saved locally</p>
+            <div class="header-content">
+                <div class="header-left">
+                    <div class="header-brand"><a href="https://github.com/mattbeane/living-paper" target="_blank">Living Paper<svg class="gh-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a> Verification Package</div>
+                    <h1>{paper_title}</h1>
+                    <span class="paper-id">{paper_id}</span>
+                    <p>Review the evidence supporting each claim. Use filters and what-if analysis to test robustness. Your progress saves automatically.</p>
+                </div>
+                <div class="header-right">
+                    <div class="header-stats">
+                        {len(claims_data)} claims<br>
+                        {sum(len(c['evidence']) for c in claims_data)} evidence links
+                    </div>
+                </div>
+            </div>
         </div>
     </header>
     <div class="container">
+        <!-- Onboarding (dismissible) -->
+        <div class="onboarding" id="onboarding">
+            <button class="dismiss" onclick="dismissOnboarding()">&times;</button>
+            <h4>How to Review This Paper</h4>
+            <p>This is a <strong>Living Paper</strong> verification package. Unlike a static PDF, you can interactively explore the evidence.</p>
+            <ul>
+                <li><strong>Verify evidence:</strong> For each claim, mark whether you can independently verify the supporting evidence</li>
+                <li><strong>Test robustness:</strong> Use "What-If Analysis" to exclude sources and see which claims still hold</li>
+                <li><strong>Set thresholds:</strong> In "Robustness Summary," adjust minimum support requirements</li>
+                <li><strong>Generate report:</strong> When done, click "Generate Report" to download your findings</li>
+            </ul>
+        </div>
+
         <div class="reviewer-bar">
             <label>Your name: <input type="text" id="reviewer-name" placeholder="Reviewer name"></label>
             <button class="btn-success" onclick="generateReport()">Generate Report</button>
             <button class="btn-primary" onclick="exportData()">Export Data</button>
+            <button class="btn-warning" onclick="resetFilters()">Reset All</button>
             <span id="save-status" style="font-size: 0.8rem; color: #666;"></span>
         </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <h4>Evidence Legend</h4>
+            <div class="legend-items">
+                <div class="legend-item"><span class="legend-color supports"></span> Supports claim</div>
+                <div class="legend-item"><span class="legend-color challenges"></span> Challenges claim</div>
+                <div class="legend-item"><span class="legend-color qualifies"></span> Qualifies/limits claim</div>
+                <div class="legend-item"><span style="font-weight:500;">[V]</span> You verified</div>
+                <div class="legend-item"><span style="font-weight:500;">[A]</span> Author-only verification</div>
+            </div>
+        </div>
+
+        <!-- Explorer Panel -->
+        <div class="explorer-panel">
+            <h3>Explore Claims & Evidence</h3>
+            <div class="filter-row">
+                <div class="filter-group search-box">
+                    <label>Search</label>
+                    <input type="text" id="search-input" placeholder="Search claims and evidence..." oninput="applyFilters()">
+                </div>
+                <div class="filter-group">
+                    <label>Claim Type</label>
+                    <select id="filter-claim-type" onchange="applyFilters()">
+                        <option value="">All Types</option>
+                        <option value="empirical">Empirical</option>
+                        <option value="theoretical">Theoretical</option>
+                        <option value="methodological">Methodological</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Support Status</label>
+                    <select id="filter-support" onchange="applyFilters()">
+                        <option value="">All</option>
+                        <option value="supported">Supported</option>
+                        <option value="partial">Partial</option>
+                        <option value="contested">Contested</option>
+                        <option value="undocumented">Undocumented</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Evidence Relation</label>
+                    <select id="filter-relation" onchange="applyFilters()">
+                        <option value="">All Relations</option>
+                        <option value="supports">Supports</option>
+                        <option value="challenges">Challenges</option>
+                        <option value="qualifies">Qualifies</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- What-If Exclusion Toggles -->
+            <div class="whatif-section" id="whatif-section">
+                <h4>What-If Analysis</h4>
+                <p style="font-size: 0.75rem; color: #888; margin-bottom: 8px;">
+                    Check boxes to exclude sources. Claims will recalculate based on remaining evidence.
+                    <em>Example: "What if we excluded Site Alpha?"</em>
+                </p>
+                <div class="whatif-toggles" id="whatif-toggles"></div>
+            </div>
+        </div>
+
+        <!-- Robustness Summary Panel (open by default) -->
+        <div class="robustness-panel">
+            <h3>
+                Robustness Summary
+                <button class="toggle-btn" onclick="toggleRobustness()">Collapse</button>
+            </h3>
+            <div class="robustness-content" id="robustness-content">
+                <p style="font-size: 0.8rem; color: #666; margin-bottom: 12px;">
+                    How well-supported is each claim? Bars show evidence breakdown. Adjust thresholds to see which claims survive stricter requirements.
+                </p>
+                <div class="threshold-controls">
+                    <label>Min supporting evidence: <input type="number" id="min-support" value="2" min="0" max="10" onchange="updateRobustness()"></label>
+                    <label>Max challenges allowed: <input type="number" id="max-challenges" value="1" min="0" max="10" onchange="updateRobustness()"></label>
+                </div>
+                <div id="robustness-bars"></div>
+                <div id="survival-stat" class="survival-stat"></div>
+            </div>
+        </div>
+
         <div class="stats" id="stats"></div>
         <div id="claims"></div>
     </div>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-brand">
+                Generated by <a href="https://github.com/mattbeane/living-paper" target="_blank">Living Paper</a> &mdash;
+                Transparent claim-evidence traceability for qualitative research
+            </div>
+            <div class="footer-meta">
+                Package created: {now()}<br>
+                Your review progress is saved in your browser
+            </div>
+        </div>
+    </footer>
     <script>
     const DATA = {data_json};
     const STORAGE_KEY = 'lp_review_' + DATA.paper_id;
 
-    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{"verifications":{{}},"notes":{{}}}}');
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{"verifications":{{}},"notes":{{}},"excludedSources":[]}}');
+    if (!state.excludedSources) state.excludedSources = [];
+
     let reviewerName = localStorage.getItem('reviewerName') || '';
     document.getElementById('reviewer-name').value = reviewerName;
     document.getElementById('reviewer-name').addEventListener('change', e => {{
         reviewerName = e.target.value;
         localStorage.setItem('reviewerName', reviewerName);
     }});
+
+    // Extract all unique sources for what-if toggles
+    function extractSources() {{
+        const sources = new Set();
+        DATA.claims.forEach(c => {{
+            c.evidence.forEach(e => {{
+                // Extract source from evidence_id pattern (e.g., "EVD-INT-S1-001" -> "S1")
+                const match = e.evidence_id.match(/-(S[A-Z0-9]+|INT|OBS|DOC)-/i);
+                if (match) sources.add(match[1].toUpperCase());
+                // Also try to get site from meta if available
+                if (e.site) sources.add(e.site);
+            }});
+        }});
+        // Add sites and roles from filter data
+        if (DATA.filters) {{
+            DATA.filters.sites.forEach(s => sources.add(s));
+            DATA.filters.roles.forEach(r => sources.add(r));
+        }}
+        return Array.from(sources).sort();
+    }}
+
+    function initWhatIfToggles() {{
+        const sources = extractSources();
+        const container = document.getElementById('whatif-toggles');
+        if (sources.length === 0) {{
+            document.getElementById('whatif-section').style.display = 'none';
+            return;
+        }}
+        container.innerHTML = sources.map(s => `
+            <label class="whatif-toggle ${{state.excludedSources.includes(s) ? 'excluded' : ''}}" data-source="${{s}}">
+                <input type="checkbox" ${{state.excludedSources.includes(s) ? 'checked' : ''}}
+                       onchange="toggleSource('${{s}}', this.checked)">
+                Exclude ${{s}}
+            </label>
+        `).join('');
+    }}
+
+    function toggleSource(source, exclude) {{
+        if (exclude && !state.excludedSources.includes(source)) {{
+            state.excludedSources.push(source);
+        }} else if (!exclude) {{
+            state.excludedSources = state.excludedSources.filter(s => s !== source);
+        }}
+        saveState();
+        initWhatIfToggles();
+        render();
+        updateRobustness();
+    }}
 
     function saveState() {{
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -807,18 +1100,202 @@ def export_html_cmd(args: argparse.Namespace) -> None:
         saveState();
     }}
 
+    function isEvidenceExcluded(e) {{
+        if (state.excludedSources.length === 0) return false;
+        for (const src of state.excludedSources) {{
+            if (e.evidence_id.toUpperCase().includes(src)) return true;
+            if (e.site && e.site.toUpperCase() === src.toUpperCase()) return true;
+        }}
+        return false;
+    }}
+
+    function getActiveEvidence(claim) {{
+        return claim.evidence.filter(e => !isEvidenceExcluded(e));
+    }}
+
+    function computeSupportStatus(evidence) {{
+        const supports = evidence.filter(e => e.relation === 'supports').length;
+        const challenges = evidence.filter(e => e.relation === 'challenges').length;
+        if (challenges > supports) return 'contested';
+        if (challenges > 0) return 'partial';
+        if (supports > 0) return 'supported';
+        return 'undocumented';
+    }}
+
+    function highlightText(text, query) {{
+        if (!query) return text;
+        const regex = new RegExp(`(${{query.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&')}})`, 'gi');
+        return text.replace(regex, '<mark>$1</mark>');
+    }}
+
+    function applyFilters() {{
+        const search = document.getElementById('search-input').value.toLowerCase();
+        const claimType = document.getElementById('filter-claim-type').value;
+        const supportStatus = document.getElementById('filter-support').value;
+        const relation = document.getElementById('filter-relation').value;
+
+        document.querySelectorAll('.claim-card').forEach(card => {{
+            const claimId = card.dataset.claimId;
+            const claim = DATA.claims.find(c => c.claim_id === claimId);
+            if (!claim) return;
+
+            let visible = true;
+
+            // Claim type filter
+            if (claimType && claim.claim_type !== claimType) visible = false;
+
+            // Support status filter (using active evidence)
+            if (supportStatus) {{
+                const activeEvidence = getActiveEvidence(claim);
+                const status = computeSupportStatus(activeEvidence);
+                if (status !== supportStatus) visible = false;
+            }}
+
+            // Relation filter - show claims that have evidence with this relation
+            if (relation) {{
+                const hasRelation = claim.evidence.some(e => e.relation === relation && !isEvidenceExcluded(e));
+                if (!hasRelation) visible = false;
+            }}
+
+            // Search filter
+            if (search) {{
+                const claimMatch = claim.text.toLowerCase().includes(search) ||
+                                   claim.claim_id.toLowerCase().includes(search);
+                const evidenceMatch = claim.evidence.some(e =>
+                    e.summary.toLowerCase().includes(search) ||
+                    e.evidence_id.toLowerCase().includes(search)
+                );
+                if (!claimMatch && !evidenceMatch) visible = false;
+            }}
+
+            card.classList.toggle('hidden', !visible);
+        }});
+
+        updateVisibleStats();
+    }}
+
+    function resetFilters() {{
+        document.getElementById('search-input').value = '';
+        document.getElementById('filter-claim-type').value = '';
+        document.getElementById('filter-support').value = '';
+        document.getElementById('filter-relation').value = '';
+        state.excludedSources = [];
+        saveState();
+        initWhatIfToggles();
+        render();
+        updateRobustness();
+    }}
+
+    function updateVisibleStats() {{
+        const visible = document.querySelectorAll('.claim-card:not(.hidden)').length;
+        const total = DATA.claims.length;
+        const statsEl = document.getElementById('stats');
+        const existingFilter = statsEl.querySelector('.filter-stat');
+        if (existingFilter) existingFilter.remove();
+
+        if (visible < total) {{
+            const filterStat = document.createElement('span');
+            filterStat.className = 'stat-item filter-stat';
+            filterStat.textContent = `Showing ${{visible}} of ${{total}} claims`;
+            statsEl.appendChild(filterStat);
+        }}
+    }}
+
+    function toggleRobustness() {{
+        const content = document.getElementById('robustness-content');
+        const btn = content.previousElementSibling.querySelector('.toggle-btn');
+        content.classList.toggle('collapsed');
+        btn.textContent = content.classList.contains('collapsed') ? 'Expand' : 'Collapse';
+    }}
+
+    function dismissOnboarding() {{
+        document.getElementById('onboarding').classList.add('hidden');
+        localStorage.setItem('lp_onboarding_dismissed', 'true');
+    }}
+
+    // Check if onboarding was previously dismissed
+    if (localStorage.getItem('lp_onboarding_dismissed') === 'true') {{
+        document.getElementById('onboarding').classList.add('hidden');
+    }}
+
+    function updateRobustness() {{
+        const minSupport = parseInt(document.getElementById('min-support').value) || 1;
+        const maxChallenges = parseInt(document.getElementById('max-challenges').value) || 999;
+
+        const bars = [];
+        let surviving = 0;
+
+        DATA.claims.forEach(c => {{
+            const activeEvidence = getActiveEvidence(c);
+            const supports = activeEvidence.filter(e => e.relation === 'supports').length;
+            const challenges = activeEvidence.filter(e => e.relation === 'challenges').length;
+            const qualifies = activeEvidence.filter(e => e.relation === 'qualifies').length;
+            const total = supports + challenges + qualifies;
+
+            const survives = supports >= minSupport && challenges <= maxChallenges;
+            if (survives) surviving++;
+
+            bars.push({{
+                claim_id: c.claim_id,
+                text: c.text.slice(0, 50) + (c.text.length > 50 ? '...' : ''),
+                supports, challenges, qualifies, total, survives
+            }});
+        }});
+
+        // Sort by support ratio
+        bars.sort((a, b) => {{
+            const ratioA = a.total ? a.supports / a.total : 0;
+            const ratioB = b.total ? b.supports / b.total : 0;
+            return ratioB - ratioA;
+        }});
+
+        const maxTotal = Math.max(...bars.map(b => b.total), 1);
+
+        document.getElementById('robustness-bars').innerHTML = bars.map(b => `
+            <div class="robustness-bar ${{b.survives ? '' : 'dim'}}">
+                <span class="robustness-label" title="${{b.claim_id}}: ${{b.text}}">${{b.claim_id}}</span>
+                <div class="robustness-track">
+                    <div class="robustness-fill supports" style="width: ${{(b.supports / maxTotal) * 100}}%"></div>
+                    <div class="robustness-fill qualifies" style="width: ${{(b.qualifies / maxTotal) * 100}}%"></div>
+                    <div class="robustness-fill challenges" style="width: ${{(b.challenges / maxTotal) * 100}}%"></div>
+                </div>
+                <span class="robustness-count">${{b.supports}}/${{b.challenges}}/${{b.qualifies}}</span>
+            </div>
+        `).join('');
+
+        const pct = Math.round((surviving / DATA.claims.length) * 100);
+        const statEl = document.getElementById('survival-stat');
+        statEl.textContent = `${{surviving}} of ${{DATA.claims.length}} claims (${{pct}}%) survive with current filters and thresholds`;
+        statEl.className = 'survival-stat' + (pct < 50 ? ' danger' : pct < 80 ? ' warning' : '');
+
+        // Also dim claims in main view that don't survive
+        document.querySelectorAll('.claim-card').forEach(card => {{
+            const claimId = card.dataset.claimId;
+            const bar = bars.find(b => b.claim_id === claimId);
+            card.classList.toggle('dim', bar && !bar.survives);
+        }});
+    }}
+
     function render() {{
+        const search = document.getElementById('search-input').value;
         let verified = 0, author = 0, unverified = 0;
         let html = '';
+
         DATA.claims.forEach(c => {{
-            html += `<div class="claim-card">
+            const activeEvidence = getActiveEvidence(c);
+            const dynamicStatus = computeSupportStatus(activeEvidence);
+            const activeCount = activeEvidence.length;
+            const excludedCount = c.evidence.length - activeCount;
+
+            html += `<div class="claim-card" data-claim-id="${{c.claim_id}}">
                 <div class="claim-header">
-                    <span class="claim-id">${{c.claim_id}}</span>
+                    <span class="claim-id">${{highlightText(c.claim_id, search)}}</span>
                     <span class="claim-type ${{c.claim_type}}">${{c.claim_type}}</span>
-                    <span class="status-badge status-${{c.support_status}}">${{c.support_status}}</span>
+                    <span class="status-badge status-${{dynamicStatus}}">${{dynamicStatus}}</span>
+                    <span class="evidence-count-badge">${{activeCount}} evidence${{excludedCount ? ` (${{excludedCount}} excluded)` : ''}}</span>
                 </div>
                 <div class="claim-body">
-                    <p class="claim-text">${{c.text}}</p>
+                    <p class="claim-text">${{highlightText(c.text, search)}}</p>
                     ${{(c.informant_coverage || c.saturation_note || c.prevalence_basis) ? `
                     <div class="prevalence">
                         <strong>Prevalence:</strong>
@@ -834,34 +1311,47 @@ def export_html_cmd(args: argparse.Namespace) -> None:
                         const key = c.claim_id + ':' + e.evidence_id;
                         const v = state.verifications[key] || {{}};
                         const note = state.notes[key] || e.analytic_note || '';
-                        if (v.status === 'external_verified') verified++;
-                        else if (v.status === 'author_verified') author++;
-                        else unverified++;
-                        return `<div class="evidence-item ${{e.relation}} ${{e.is_contradicting ? 'contradicting' : ''}}">
+                        const excluded = isEvidenceExcluded(e);
+
+                        if (!excluded) {{
+                            if (v.status === 'external_verified') verified++;
+                            else if (v.status === 'author_verified') author++;
+                            else unverified++;
+                        }}
+
+                        return `<div class="evidence-item ${{e.relation}} ${{e.is_contradicting ? 'contradicting' : ''}} ${{excluded ? 'excluded' : ''}}">
                             <div class="evidence-header">
-                                <span class="evidence-id">${{e.evidence_id}}${{e.is_contradicting ? '<span class="contradiction-badge">CONTRADICTING</span>' : ''}}</span>
+                                <span class="evidence-id">
+                                    ${{highlightText(e.evidence_id, search)}}
+                                    ${{e.is_contradicting ? '<span class="contradiction-badge">CONTRADICTING</span>' : ''}}
+                                    ${{excluded ? '<span class="excluded-badge">EXCLUDED</span>' : ''}}
+                                </span>
                                 <span><span class="evidence-relation">${{e.relation}}</span> <span class="evidence-relation">${{e.weight}}</span></span>
                             </div>
-                            <p class="evidence-summary">${{e.summary}}</p>
+                            <p class="evidence-summary">${{highlightText(e.summary, search)}}</p>
                             ${{e.note ? '<p style="font-size:0.75rem;color:#666;margin-top:4px;">Note: ' + e.note + '</p>' : ''}}
                             <textarea class="note-input" placeholder="Your analytic note..." onchange="updateNote('${{c.claim_id}}','${{e.evidence_id}}',this.value)">${{note}}</textarea>
                             <div class="verify-controls">
-                                <button class="verify-btn verified ${{v.status==='external_verified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','external_verified')">Verified</button>
-                                <button class="verify-btn author ${{v.status==='author_verified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','author_verified')">Author Only</button>
-                                <button class="verify-btn unverified ${{v.status==='unverified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','unverified')">Not Verified</button>
+                                <button class="verify-btn verified ${{v.status==='external_verified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','external_verified')" ${{excluded ? 'disabled' : ''}}>Verified</button>
+                                <button class="verify-btn author ${{v.status==='author_verified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','author_verified')" ${{excluded ? 'disabled' : ''}}>Author Only</button>
+                                <button class="verify-btn unverified ${{v.status==='unverified'?'active':''}}" onclick="setVerification('${{c.claim_id}}','${{e.evidence_id}}','unverified')" ${{excluded ? 'disabled' : ''}}>Not Verified</button>
                             </div>
                         </div>`;
                     }}).join('')}}
                 </div>
             </div>`;
         }});
+
         document.getElementById('claims').innerHTML = html;
         document.getElementById('stats').innerHTML = `
-            <span>Verified: ${{verified}}</span>
-            <span>Author Only: ${{author}}</span>
-            <span>Not Verified: ${{unverified}}</span>
-            <span>Total Links: ${{verified + author + unverified}}</span>
+            <span class="stat-item">Verified: ${{verified}}</span>
+            <span class="stat-item">Author Only: ${{author}}</span>
+            <span class="stat-item">Not Verified: ${{unverified}}</span>
+            <span class="stat-item">Total Active Links: ${{verified + author + unverified}}</span>
+            ${{state.excludedSources.length ? `<span class="stat-item" style="background:#ffcdd2;">Excluding: ${{state.excludedSources.join(', ')}}</span>` : ''}}
         `;
+
+        applyFilters();
     }}
 
     function generateReport() {{
@@ -869,9 +1359,21 @@ def export_html_cmd(args: argparse.Namespace) -> None:
         report += 'Generated: ' + new Date().toISOString() + '\\n';
         report += 'Reviewer: ' + (reviewerName || 'anonymous') + '\\n\\n';
 
-        let verified = 0, author = 0, unverified = 0;
+        // Include what-if exclusions if any
+        if (state.excludedSources.length > 0) {{
+            report += '## What-If Analysis Applied\\n\\n';
+            report += 'The following sources were excluded during review:\\n';
+            state.excludedSources.forEach(s => report += '- ' + s + '\\n');
+            report += '\\n';
+        }}
+
+        let verified = 0, author = 0, unverified = 0, excluded = 0;
         DATA.claims.forEach(c => {{
             c.evidence.forEach(e => {{
+                if (isEvidenceExcluded(e)) {{
+                    excluded++;
+                    return;
+                }}
                 const key = c.claim_id + ':' + e.evidence_id;
                 const v = state.verifications[key] || {{}};
                 if (v.status === 'external_verified') verified++;
@@ -883,19 +1385,41 @@ def export_html_cmd(args: argparse.Namespace) -> None:
         report += '## Summary\\n\\n';
         report += '- Verified: ' + verified + '\\n';
         report += '- Author Only: ' + author + '\\n';
-        report += '- Not Verified: ' + unverified + '\\n\\n';
+        report += '- Not Verified: ' + unverified + '\\n';
+        if (excluded > 0) report += '- Excluded (what-if): ' + excluded + '\\n';
+        report += '\\n';
+
+        // Robustness summary
+        const minSupport = parseInt(document.getElementById('min-support').value) || 1;
+        const maxChallenges = parseInt(document.getElementById('max-challenges').value) || 999;
+        let surviving = 0;
+        DATA.claims.forEach(c => {{
+            const activeEvidence = getActiveEvidence(c);
+            const supports = activeEvidence.filter(e => e.relation === 'supports').length;
+            const challenges = activeEvidence.filter(e => e.relation === 'challenges').length;
+            if (supports >= minSupport && challenges <= maxChallenges) surviving++;
+        }});
+
+        report += '## Robustness Summary\\n\\n';
+        report += '- Claims surviving (min ' + minSupport + ' support, max ' + maxChallenges + ' challenges): ' + surviving + '/' + DATA.claims.length + '\\n\\n';
 
         report += '## Claims Detail\\n\\n';
         DATA.claims.forEach(c => {{
-            report += '### ' + c.claim_id + '\\n';
+            const activeEvidence = getActiveEvidence(c);
+            const status = computeSupportStatus(activeEvidence);
+            report += '### ' + c.claim_id + ' [' + status.toUpperCase() + ']\\n';
             report += '**' + c.text + '**\\n\\n';
             c.evidence.forEach(e => {{
+                const isExcl = isEvidenceExcluded(e);
                 const key = c.claim_id + ':' + e.evidence_id;
                 const v = state.verifications[key] || {{}};
                 const note = state.notes[key] || '';
-                const icon = v.status === 'external_verified' ? '[V]' : v.status === 'author_verified' ? '[A]' : '[ ]';
-                report += '- ' + icon + ' ' + e.evidence_id + ' (' + e.relation + ')\\n';
-                if (note) report += '  - *Note:* ' + note + '\\n';
+                let icon = '[ ]';
+                if (isExcl) icon = '[X]';
+                else if (v.status === 'external_verified') icon = '[V]';
+                else if (v.status === 'author_verified') icon = '[A]';
+                report += '- ' + icon + ' ' + e.evidence_id + ' (' + e.relation + ')' + (isExcl ? ' *EXCLUDED*' : '') + '\\n';
+                if (note && !isExcl) report += '  - *Note:* ' + note + '\\n';
             }});
             report += '\\n';
         }});
@@ -910,7 +1434,18 @@ def export_html_cmd(args: argparse.Namespace) -> None:
     }}
 
     function exportData() {{
-        const exportObj = {{ paper_id: DATA.paper_id, reviewer: reviewerName, exported_at: new Date().toISOString(), verifications: state.verifications, notes: state.notes }};
+        const exportObj = {{
+            paper_id: DATA.paper_id,
+            reviewer: reviewerName,
+            exported_at: new Date().toISOString(),
+            verifications: state.verifications,
+            notes: state.notes,
+            excludedSources: state.excludedSources,
+            robustnessSettings: {{
+                minSupport: parseInt(document.getElementById('min-support').value) || 1,
+                maxChallenges: parseInt(document.getElementById('max-challenges').value) || 999
+            }}
+        }};
         const blob = new Blob([JSON.stringify(exportObj, null, 2)], {{ type: 'application/json' }});
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -920,7 +1455,10 @@ def export_html_cmd(args: argparse.Namespace) -> None:
         URL.revokeObjectURL(url);
     }}
 
+    // Initialize
+    initWhatIfToggles();
     render();
+    updateRobustness();
     </script>
 </body>
 </html>'''

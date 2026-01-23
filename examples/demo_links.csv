@@ -1,0 +1,22 @@
+claim_id,evidence_id,relation,weight,note
+CLM-001,EVD-S1-002,supports,central,Direct measurement of training cost increase
+CLM-001,EVD-S3-002,supports,central,Documentary evidence of case reduction
+CLM-001,EVD-QNT-001,supports,central,Statistical confirmation across sites
+CLM-001,EVD-S2-001,challenges,supporting,Counter-narrative from Site Beta
+CLM-002,EVD-S1-001,supports,central,Direct observation of workaround behavior
+CLM-002,EVD-S2-003,supports,supporting,Nurse corroborates workaround pattern
+CLM-002,EVD-S1-003,supports,peripheral,Fieldnote observation
+CLM-002,EVD-S2-002,supports,supporting,Impact on resident learning
+CLM-002,EVD-S2-001,challenges,peripheral,Alternative interpretation
+CLM-003,EVD-S3-003,supports,central,Self-reported skill decay
+CLM-003,EVD-S3-002,supports,supporting,Indirect evidence via case reduction
+CLM-003,EVD-S3-004,challenges,central,Direct contestation of claim
+CLM-003,EVD-S2-001,challenges,supporting,Alternative interpretation of adaptation
+CLM-003,EVD-QNT-001,qualifies,peripheral,Statistical support but different framing
+CLM-004,EVD-S1-003,supports,central,Demonstrates informal learning episode
+CLM-004,EVD-S1-001,supports,supporting,Shows informal teaching context
+CLM-004,EVD-S2-002,supports,supporting,Informal learning impacts
+CLM-005,EVD-QNT-002,supports,central,Statistical evidence of U-shape
+CLM-005,EVD-S3-003,supports,peripheral,Consistent with late-stage pattern
+CLM-005,EVD-S2-001,challenges,supporting,Linear improvement counter-narrative
+CLM-005,EVD-S3-004,challenges,peripheral,Questions the decline phase
