@@ -91,11 +91,23 @@ python3 lp.py lint
 python3 lp.py prereview --out ./prereview_report.md
 python3 lp.py export --out ./verification_package
 
-# NEW in v0.5: Generate reviewer packages
+# Generate interactive HTML for reviewers (v0.6)
+python3 lp.py export-html --paper your-paper-id --out ./reviewer.html
+
+# Or generate complete reviewer packages with launchers
 python3 lp.py export-package --paper your-paper-id --out ./reviewer_folder
 ```
 
-### What's New in v0.5
+### What's New in v0.6
+
+- **Interactive What-If Analysis**: Toggle individual sources on/off to test claim robustness—inspired by [VBM Visualizer](https://vbm-visualizer.vercel.app/)'s multiverse analysis approach
+- **Dynamic Support Recalculation**: Watch how claims' support status changes when you exclude sources
+- **Robustness Panel**: See which claims survive and which become vulnerable as evidence is filtered
+- **Search & Filter**: Find claims by text, filter by type (empirical/theoretical/mechanism), support status, or evidence relation
+- **Evidence Legend**: Clear visual guide to support/challenge/qualify relationships and weight indicators
+- **Onboarding Guidance**: First-time users see a dismissible callout explaining key features
+
+### What Was New in v0.5
 
 - **Static HTML Reviewer**: Generate self-contained HTML files reviewers can open in any browser—no server needed
 - **Reviewer Packages**: Create complete folders with HTML, README, and double-click launchers (Mac/Windows)
@@ -134,6 +146,21 @@ sites:
 projects:
   ACHIEVE: "Project-A"
 ```
+
+---
+
+## The Interactive Reviewer Experience
+
+When reviewers open your Living Paper HTML, they can:
+
+1. **Search** — Type keywords to highlight matching claims and evidence
+2. **Filter** — Narrow to specific claim types, support levels, or evidence relations
+3. **What-If Analysis** — Toggle sources off to ask "what if I exclude this informant/site/method?"
+4. **Watch Robustness** — See which claims stay supported vs. become vulnerable as sources are excluded
+
+This transforms the static PDF review process into an interactive dialogue with your evidence. Reviewers can stress-test your claims themselves, building confidence that your findings are robust—or identifying exactly where they're weak.
+
+The approach is inspired by [Andy Hall's VBM Visualizer](https://vbm-visualizer.vercel.app/), which lets readers explore quantitative specification curves. Living Paper brings similar "talk to the paper" capabilities to qualitative research.
 
 ---
 
